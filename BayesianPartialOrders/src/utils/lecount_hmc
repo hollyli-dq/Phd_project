@@ -1,0 +1,176 @@
+import numpy as np
+import math
+
+class lecount_hmc:
+    def __init__(self, poset_adj_matrix):
+        """
+        Initialize the lecount_hmc class with the poset adjacency matrix.
+        """
+        self.poset_adj_matrix = poset_adj_matrix
+        self.n = poset_adj_matrix.shape[0]
+        self.A, self.b = self.construct_Ab_from_poset()
+    
+    def construct_Ab_from_poset(self):
+        """
+        Constructs the inequality representation (A, b) of the order polytope from the poset adjacency matrix.
+        """
+        A_list = []
+        b_list = []
+
+        # Variable bounds: 0 <= x_i <= 1
+        for i in range(self.n):
+            # x_i >= 0 -> -x_i <= 0
+            row_lower = [-1 if j == i else 0 for j in range(self.n)]
+            A_list.append(row_lower)
+            b_list.append(0)
+
+            # x_i <= 1
+            row_upper = [1 if j == i else 0 for j in range(self.n)]
+            A_list.append(row_upper)
+            b_list.append(1)
+
+        # Order relations: x_i - x_j <= 0 for x_i <= x_j
+        for i in range(self.n):
+            for j in range(self.n):
+                if self.poset_adj_matrix[i, j] == 1:
+                    # x_i - x_j <= 0
+                    row_order = [0] * self.n
+                    row_order[i] = 1
+                    row_order[j] = -1
+                    A_list.append(row_order)
+                    b_list.append(0)
+
+        A = np.array(A_list)
+        b = np.array(b_list)
+        return A, b
+
+    def positive_intersect(self, x, v):
+        """
+        Computes the time until the next intersection with the polytope boundary.
+        """
+        eps = 1e-10
+        t_list = []
+        facet_indices = []
+        for i in range(len(self.b)):
+            a_i = self.A[i]
+            b_i = self.b[i]
+            numerator = b_i - np.dot(a_i, x)
+            denominator = np.dot(a_i, v)
+            if abs(denominator) > eps:
+                t = numerator / denominator
+                if t > eps:
+                    t_list.append(t)
+                    facet_indices.append(i)
+        if not t_list:
+            return None, None
+        t_min_index = np.argmin(t_list)
+        return t_list[t_min_index], facet_indices[t_min_index]
+
+    def compute_reflection(self, v, a_i):
+        """
+        Reflects the velocity vector v when hitting a facet defined by a_i.
+        """
+        n = a_i / np.linalg.norm(a_i)
+        v_new = v - 2 * np.dot(v, n) * n
+        return v_new
+
+    def update_position(self, x, v, t):
+        """
+        Updates the position x by moving along v for time t.
+        """
+        return x + t * v
+
+    def hmc_with_reflections(self, x0, L_max, M, rng):
+        """
+        Performs one iteration of HMC with reflections.
+        """
+        x = np.copy(x0)
+        # Step 1: Choose traveling time L ~ Uniform(0, L_max)
+        L = rng.uniform(0, L_max)
+        T = L
+
+        # Step 2: Pick momentum p ~ N(0, I_n)
+        v = rng.normal(size=self.n)
+        x_start = np.copy(x)
+        reflections = 0
+
+        while reflections <= M:
+            t_min, facet_index = self.positive_intersect(x, v)
+            if t_min is None or T <= t_min:
+                # Update position and exit
+                x = self.update_position(x, v, T)
+                break
+            else:
+                # Move to intersection point
+                x = self.update_position(x, v, t_min)
+                T -= t_min
+                # Reflect velocity
+                a_i = self.A[facet_index]
+                v = self.compute_reflection(v, a_i)
+                reflections += 1
+        else:
+            # Exceeded maximum reflections, reject move
+            x = x_start
+
+        # Check if new position is inside the polytope
+        if np.all(np.dot(self.A, x) <= self.b + 1e-8):
+            return x
+        else:
+            return x_start
+
+    def sample_polytope_hmc(self, num_samples, L_max=1.0, M=100):
+        """
+        Samples points from the polytope using HMC with reflections.
+        """
+        rng = np.random.default_rng()
+        x0 = np.full(self.n, 0.5)
+        if not np.all(np.dot(self.A, x0) <= self.b + 1e-8):
+            raise ValueError("Starting point x0 is not inside the polytope.")
+        samples = []
+        x = x0
+        for _ in range(num_samples):
+            x = self.hmc_with_reflections(x, L_max, M, rng)
+            samples.append(np.copy(x))
+        return np.array(samples)
+
+    def is_point_in_polytope(self, point):
+        """
+        Checks if a point is inside the polytope.
+        """
+        return np.all(np.dot(self.A, point) <= self.b + 1e-8)
+
+    def estimate_volume_via_rejection_sampling(self, num_samples):
+        """
+        Estimates the volume of the polytope using rejection sampling.
+        """
+        rng = np.random.default_rng()
+        count_inside = 0
+        for _ in range(num_samples):
+            x = rng.uniform(0, 1, size=self.n)
+            if self.is_point_in_polytope(x):
+                count_inside += 1
+        volume_estimate = count_inside / num_samples
+        return volume_estimate
+
+    def estimate_linear_extensions(self, num_samples_rejection=1000000):
+        """
+        Estimates the number of linear extensions based on the estimated volume.
+        """
+        volume_estimate = self.estimate_volume_via_rejection_sampling(num_samples_rejection)
+        n_factorial = math.factorial(self.n)
+        estimated_linear_extensions = n_factorial * volume_estimate
+        return estimated_linear_extensions, volume_estimate
+
+    def run(self, num_samples_hmc=100000, num_samples_rejection=1000000, L_max=1.0, M=100):
+        """
+        Runs the HMC sampling and estimates the number of linear extensions.
+        """
+        # Sample points using HMC with reflections (optional, for further analysis)
+        samples = self.sample_polytope_hmc(num_samples_hmc, L_max, M)
+
+        # Estimate the number of linear extensions
+        estimated_linear_extensions, volume_estimate = self.estimate_linear_extensions(num_samples_rejection)
+
+        print(f"Estimated volume of the order polytope: {volume_estimate}")
+        print(f"Estimated number of linear extensions: {estimated_linear_extensions}")
+        return estimated_linear_extensions, volume_estimate, samples

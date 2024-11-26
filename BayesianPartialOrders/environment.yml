@@ -1,0 +1,15 @@
+name: bayesian-partial-orders
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.9
+  - numpy
+  - scipy
+  - pytest
+  - jupyterlab  # If you want to work with notebooks
+  - matplotlib  # For plotting results or visualizations
+  - pip
+  - pip:
+      - gumbel  # For the Gumbel distribution in the `compute_eta` function
+      - rpy2 # TO read the data from R file 
