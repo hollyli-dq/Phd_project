@@ -1,0 +1,40 @@
+# config.yaml
+
+# MCMC run configuration.
+mcmc:
+  num_iterations: 100000    # Total number of MCMC iterations.
+  num_iterations_debug: 2000
+  K: 5                 # Latent dimension (number of columns in U).
+  update_probabilities:
+    rho: 0.3           # Proportion of iterations to update rho.
+    noise: 0.3         # Proportion of iterations to update noise parameter(s).
+    U: 0.4             # Proportion of iterations to update the latent variable U.
+    K: 0.2
+
+# Configuration for updating ρ.
+rho:
+  dr: 0.8             # Multiplicative step size for rho update.
+
+# Configuration for noise parameter updates.
+noise:
+  noise_option: "queue_jump"   # Options: "mallows_noise" or "queue_jump".
+  sigma_mallow: 0.5              # Proposal standard deviation for Mallows theta update.
+
+# Prior parameters.
+prior:
+  rho_prior: 0.16667                    # Prior probability of rho.
+  noise_beta_prior: 9           # Beta prior parameter for noise (if applicable). We want the step size to be 0.1
+  mallow_ua: 10                   # Exponential rate parameter for Mallows theta.
+  sigma_u: 0.5                    # Prior standard deviation for U shift. 
+  K_prior: 3                      # This is the possion distribution with truncated lambda distribution 
+
+
+debug:
+  update_probabilities:
+    rho: 0.3           # Proportion of iterations to update rho.
+    noise: 0.3         # Proportion of iterations to update noise parameter(s).
+    U: 0.2             # Proportion of iterations to update the latent variable U.
+    K: 0.2
+
+
+  num_iterations_debug: 50000 
